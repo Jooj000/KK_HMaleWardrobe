@@ -2,8 +2,8 @@
 # Usage:  powershell -ExecutionPolicy Bypass -File build.ps1 [-Install]
 #   -Install  copies the DLLs (and the CampusLife data folder) into the game's
 #             BepInEx\plugins\Joojkk\ folder.
-#   -Only     builds just that plugin (KK_CampusLife, KK_HMaleWardrobe or KK_SchoolOptimizer). A plugin whose
-#             src folder is missing (a single-mod repository) is skipped.
+#   -Only     builds just that plugin (KK_CampusLife, KK_HMaleWardrobe, KK_SchoolOptimizer or KK_CampusSaves). A plugin
+#             whose src folder is missing (a single-mod repository) is skipped.
 #   -Game     the Koikatsu folder (with Koikatu_Data and BepInEx);  -Csc  the Roslyn csc.exe to use.
 param([switch]$Install, [switch]$Dev, [string]$Only = '',
       [string]$Game = 'E:\SteamLibrary\steamapps\settings\KK',
@@ -52,12 +52,15 @@ function Build($name) {
   if ($name -eq 'KK_CampusLife' -and (Test-Path $dlgDir)) {
     Get-ChildItem $dlgDir -Filter *.dlg | ForEach-Object { $cscArgs += "-resource:$($_.FullName),CampusLife.dialogue.$($_.Name)" }
   }
+  $spotsDefault = Join-Path $root "data\spots_default.txt"
+  if ($name -eq 'KK_CampusLife' -and (Test-Path $spotsDefault)) { $cscArgs += "-resource:$spotsDefault,CampusLife.spots_default.txt" }
   & $csc @cscArgs
   if ($LASTEXITCODE -ne 0) { throw "Build failed: $name" }
   Write-Host "Built $dll"
 }
 
-$names = @('KK_CampusLife', 'KK_HMaleWardrobe', 'KK_SchoolOptimizer') | Where-Object { (Test-Path (Join-Path $root "src\$_")) -and ($Only -eq '' -or $Only -eq $_) }
+# KK_CampusSaves is built only by name until it is released, so that finish_tests leaves it out of the game.
+$names = @('KK_CampusLife', 'KK_HMaleWardrobe', 'KK_SchoolOptimizer', 'KK_CampusSaves') | Where-Object { (Test-Path (Join-Path $root "src\$_")) -and (($Only -eq '' -and $_ -ne 'KK_CampusSaves') -or $Only -eq $_) }
 foreach ($n in $names) { Build $n }
 
 if ($Install) {
@@ -69,6 +72,11 @@ if ($Install) {
     $bgDest = Join-Path $dest 'backgrounds'
     New-Item -ItemType Directory -Force $bgDest | Out-Null
     Copy-Item (Join-Path $root 'data\backgrounds\*.jpg') $bgDest -Force
+  }
+  if (($names -contains 'KK_CampusLife') -and (Test-Path (Join-Path $root 'data\mapshots'))) {
+    $msDest = Join-Path $dest 'mapshots'
+    New-Item -ItemType Directory -Force $msDest | Out-Null
+    Copy-Item (Join-Path $root 'data\mapshots\*.jpg') $msDest -Force
   }
   Write-Host "Installed to $dest"
 }
