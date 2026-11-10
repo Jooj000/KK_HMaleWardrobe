@@ -1,7 +1,6 @@
 ﻿# Builds KK_CampusLife.dll, KK_HMaleWardrobe.dll and KK_SchoolOptimizer.dll with the Roslyn csc from VS 2019.
 # Usage:  powershell -ExecutionPolicy Bypass -File build.ps1 [-Install]
-#   -Install  copies the DLLs (and the CampusLife data folder) into the game's
-#             BepInEx\plugins\Joojkk\ folder.
+#   -Install  copies the DLLs into the game's BepInEx\plugins\Joojkk\ folder (each mod is one DLL).
 #   -Only     builds just that plugin (KK_CampusLife, KK_HMaleWardrobe, KK_SchoolOptimizer or KK_CampusSaves). A plugin
 #             whose src folder is missing (a single-mod repository) is skipped.
 #   -Game     the Koikatsu folder (with Koikatu_Data and BepInEx);  -Csc  the Roslyn csc.exe to use.
@@ -52,14 +51,23 @@ function Build($name) {
   if ($name -eq 'KK_CampusLife' -and (Test-Path $dlgDir)) {
     Get-ChildItem $dlgDir -Filter *.dlg | ForEach-Object { $cscArgs += "-resource:$($_.FullName),CampusLife.dialogue.$($_.Name)" }
   }
+  # The default activity spots (placed with the Alt+F7 window), built into the DLL.
   $spotsDefault = Join-Path $root "data\spots_default.txt"
   if ($name -eq 'KK_CampusLife' -and (Test-Path $spotsDefault)) { $cscArgs += "-resource:$spotsDefault,CampusLife.spots_default.txt" }
+  # The painted event backgrounds, the loading screen's map photos and the staff-title translation, so the mod is a
+  # single DLL. A file of the same name in a folder next to the DLL replaces the built-in one.
+  if ($name -eq 'KK_CampusLife') {
+    foreach ($pair in @(@('backgrounds', '*.jpg'), @('mapshots', '*.jpg'), @('translation', '*.txt'))) {
+      $dir = Join-Path $root "data\$($pair[0])"
+      if (Test-Path $dir) { Get-ChildItem $dir -Filter $pair[1] | ForEach-Object { $cscArgs += "-resource:$($_.FullName),CampusLife.$($pair[0]).$($_.Name)" } }
+    }
+  }
   & $csc @cscArgs
   if ($LASTEXITCODE -ne 0) { throw "Build failed: $name" }
   Write-Host "Built $dll"
 }
 
-# KK_CampusSaves is built only by name until it is released, so that finish_tests leaves it out of the game.
+# KK_CampusSaves is built only by name (-Only KK_CampusSaves).
 $names = @('KK_CampusLife', 'KK_HMaleWardrobe', 'KK_SchoolOptimizer', 'KK_CampusSaves') | Where-Object { (Test-Path (Join-Path $root "src\$_")) -and (($Only -eq '' -and $_ -ne 'KK_CampusSaves') -or $Only -eq $_) }
 foreach ($n in $names) { Build $n }
 
@@ -67,16 +75,5 @@ if ($Install) {
   $dest = Join-Path $plugins 'Joojkk'
   New-Item -ItemType Directory -Force $dest | Out-Null
   foreach ($n in $names) { Copy-Item (Join-Path $out "$n.dll") $dest -Force }
-  # Painted event backgrounds.
-  if (($names -contains 'KK_CampusLife') -and (Test-Path (Join-Path $root 'data\backgrounds'))) {
-    $bgDest = Join-Path $dest 'backgrounds'
-    New-Item -ItemType Directory -Force $bgDest | Out-Null
-    Copy-Item (Join-Path $root 'data\backgrounds\*.jpg') $bgDest -Force
-  }
-  if (($names -contains 'KK_CampusLife') -and (Test-Path (Join-Path $root 'data\mapshots'))) {
-    $msDest = Join-Path $dest 'mapshots'
-    New-Item -ItemType Directory -Force $msDest | Out-Null
-    Copy-Item (Join-Path $root 'data\mapshots\*.jpg') $msDest -Force
-  }
   Write-Host "Installed to $dest"
 }
